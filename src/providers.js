@@ -18,8 +18,8 @@
     gemini: {
       label: "Gemini (Google)",
       needsKey: true,
-      defaultModel: "gemini-2.5-flash",
-      models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      defaultModel: "gemini-flash-latest",
+      models: ["gemini-flash-latest", "gemini-pro-latest"],
       defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
     },
     ollama: {
@@ -56,7 +56,9 @@
     if (!res.ok) {
       let detail = "";
       try { const j = await res.json(); detail = j.error?.message || j.error || ""; } catch (_) {}
-      throw new Error(ERRORS[res.status] || `Erreur API (${res.status}) ${detail}`);
+      const err = new Error(ERRORS[res.status] || `Erreur API (${res.status}) ${detail}`);
+      err.status = res.status;
+      throw err;
     }
     return res.json();
   }
@@ -121,7 +123,31 @@
       .sort((a, b) => (/flash/.test(b) - /flash/.test(a)) || b.localeCompare(a));
   }
 
-  const api = { PROVIDERS, complete, listGeminiModels };
+  /** Choisit le meilleur modèle Gemini disponible (flash stable de préférence). */
+  function pickGeminiModel(models) {
+    const stable = models.filter((m) => !/preview|exp|thinking|lite|nano/.test(m));
+    return stable.find((m) => /flash/.test(m)) || models.find((m) => /flash/.test(m)) || stable[0] || models[0];
+  }
+
+  /**
+   * Comme complete(), mais pour Gemini : si le modèle est introuvable (404),
+   * récupère la liste des modèles disponibles et réessaie avec le plus adapté.
+   * Renvoie { text, model }.
+   */
+  async function completeWithFallback(cfg, system, user) {
+    const model = cfg.model || PROVIDERS[cfg.provider].defaultModel;
+    try {
+      return { text: await complete({ ...cfg, model }, system, user), model };
+    } catch (e) {
+      if (cfg.provider !== "gemini" || e.status !== 404) throw e;
+      const models = await listGeminiModels(cfg);
+      const next = pickGeminiModel(models);
+      if (!next || next === model) throw new Error(`Modèle « ${model} » introuvable et aucun autre modèle Gemini disponible.`);
+      return { text: await complete({ ...cfg, model: next }, system, user), model: next };
+    }
+  }
+
+  const api = { PROVIDERS, complete, completeWithFallback, listGeminiModels, pickGeminiModel };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CtxProviders = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -79,7 +79,8 @@ async function loadGeminiModels() {
   }
 }
 
-$("apiKey").addEventListener("change", loadGeminiModels);
+let keyTimer;
+$("apiKey").addEventListener("input", () => { clearTimeout(keyTimer); keyTimer = setTimeout(loadGeminiModels, 600); });
 
 function currentCfg() {
   readProviderFields();
@@ -119,7 +120,11 @@ $("test").addEventListener("click", async () => {
   try {
     await ensureHostPermission(cfg.baseUrl || PROVIDERS[cfg.provider].defaultBaseUrl);
     const r = await chrome.runtime.sendMessage({ type: "test-provider", cfg });
-    if (r.ok) setStatus(st, "Connexion réussie ✓", true);
+    if (r.ok) {
+      const changed = r.model && r.model !== cfg.model;
+      if (changed) $("model").value = r.model;
+      setStatus(st, changed ? `Connexion réussie ✓ (modèle remplacé par ${r.model}, pensez à enregistrer)` : "Connexion réussie ✓", true);
+    }
     else setStatus(st, r.error, false);
   } catch (e) { setStatus(st, e.message, false); }
 });

@@ -48,3 +48,25 @@ test("parseResponse lit du JSON, même entouré de ``` ou de texte", () => {
 test("parseResponse se replie sur le texte brut", () => {
   assert.strictEqual(parseResponse("rive").translation, "rive");
 });
+
+const providers = require("../src/providers.js");
+
+test("pickGeminiModel préfère un flash stable", () => {
+  assert.strictEqual(providers.pickGeminiModel(["gemini-3-pro", "gemini-3-flash-preview", "gemini-3-flash", "gemini-3-flash-lite"]), "gemini-3-flash");
+});
+
+test("completeWithFallback bascule sur un modèle disponible en cas de 404", async () => {
+  const calls = [];
+  global.fetch = async (url) => {
+    calls.push(url);
+    if (url.includes("/models?")) return { ok: true, json: async () => ({ models: [
+      { name: "models/gemini-3-flash", supportedGenerationMethods: ["generateContent"] },
+      { name: "models/text-embedding-004", supportedGenerationMethods: ["embedContent"] },
+    ] }) };
+    if (url.includes("gemini-old")) return { ok: false, status: 404, json: async () => ({}) };
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "OK" }] } }] }) };
+  };
+  const r = await providers.completeWithFallback({ provider: "gemini", apiKey: "k", model: "gemini-old" }, "s", "u");
+  assert.deepStrictEqual(r, { text: "OK", model: "gemini-3-flash" });
+  assert.strictEqual(calls.length, 3);
+});
