@@ -57,5 +57,6 @@
   "optional_host_permissions": [
     "https://*/*",
     "http://*/*"
-  ]
+  ],
+  "homepage_url": "https://github.com/mdpinto111/context-translator"
 }

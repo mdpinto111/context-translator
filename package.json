@@ -2,5 +2,14 @@
   "name": "context-translator",
   "version": "1.0.0",
   "private": true,
-  "scripts": { "test": "node --test test/" }
+  "scripts": {
+    "test": "node --test test/",
+    "build": "node scripts/build.mjs"
+  },
+  "license": "MIT",
+  "description": "Context-aware translation of selected text using LLMs (Gemini, Ollama, Claude, OpenAI)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mdpinto111/context-translator.git"
+  }
 }
