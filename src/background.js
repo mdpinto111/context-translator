@@ -48,8 +48,8 @@ async function translate(ctx, overrideLang) {
   const target = overrideLang || s.targetLang;
   const key = JSON.stringify([ctx.selection, ctx.context, target, cfg.provider, cfg.model]);
   if (cache.has(key)) return cache.get(key);
-  const { text, model } = await CtxProviders.completeWithFallback(cfg, CtxPrompt.SYSTEM_PROMPT, CtxPrompt.buildUserMessage(ctx, target));
-  if (model !== cfg.model) await saveModel(s, model); // le modèle configuré n'existait plus
+  const { text, model, persist } = await CtxProviders.completeWithFallback(cfg, CtxPrompt.SYSTEM_PROMPT, CtxPrompt.buildUserMessage(ctx, target));
+  if (persist) await saveModel(s, model); // le modèle configuré n'existe plus
   const result = { ...CtxPrompt.parseResponse(text), targetLang: target, model };
   cache.set(key, result);
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);

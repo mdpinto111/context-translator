@@ -67,6 +67,27 @@ test("completeWithFallback bascule sur un modèle disponible en cas de 404", asy
     return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "OK" }] } }] }) };
   };
   const r = await providers.completeWithFallback({ provider: "gemini", apiKey: "k", model: "gemini-old" }, "s", "u");
-  assert.deepStrictEqual(r, { text: "OK", model: "gemini-3-flash" });
+  assert.deepStrictEqual(r, { text: "OK", model: "gemini-3-flash", persist: true });
   assert.strictEqual(calls.length, 3);
+});
+
+test("completeWithFallback : 503 → nouvel essai, puis autre modèle, sans le mémoriser", async () => {
+  const calls = [];
+  global.fetch = async (url) => {
+    calls.push(url);
+    if (url.includes("/models?")) return { ok: true, json: async () => ({ models: [
+      { name: "models/gemini-busy", supportedGenerationMethods: ["generateContent"] },
+      { name: "models/gemini-3-flash-lite", supportedGenerationMethods: ["generateContent"] },
+    ] }) };
+    if (url.includes("gemini-busy")) return { ok: false, status: 503, json: async () => ({ error: { message: "high demand" } }) };
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "OK" }] } }] }) };
+  };
+  const r = await providers.completeWithFallback({ provider: "gemini", apiKey: "k", model: "gemini-busy" }, "s", "u");
+  assert.deepStrictEqual(r, { text: "OK", model: "gemini-3-flash-lite", persist: false });
+  assert.strictEqual(calls.filter((u) => u.includes("gemini-busy:")).length, 2); // 1 essai + 1 reprise
+});
+
+test("completeWithFallback ne bascule pas pour une clé invalide", async () => {
+  global.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: "API key not valid" } }) });
+  await assert.rejects(providers.completeWithFallback({ provider: "gemini", apiKey: "bad", model: "m" }, "s", "u"), /API key not valid/);
 });

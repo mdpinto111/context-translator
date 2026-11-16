@@ -43,6 +43,8 @@
     403: "Accès refusé (clé, droits, ou origine CORS refusée par le serveur local).",
     404: "Modèle ou URL introuvable. Vérifiez les options.",
     429: "Limite de requêtes atteinte, réessayez dans un instant.",
+    500: "Erreur interne du service, réessayez dans un instant.",
+    503: "Le modèle est surchargé en ce moment, réessayez dans un instant.",
     529: "Le service est surchargé, réessayez dans un instant.",
   };
 
@@ -67,7 +69,8 @@
     if (!res.ok) {
       let detail = "";
       try { const j = await res.json(); detail = j.error?.message || j.error || ""; } catch (_) {}
-      const err = new Error(ERRORS[res.status] || `Erreur API (${res.status}) ${detail}`);
+      const badKey = res.status === 400 && /api key/i.test(String(detail));
+      const err = new Error(badKey ? `${ERRORS[401]} (${detail})` : ERRORS[res.status] || `Erreur API (${res.status}) ${detail}`);
       err.status = res.status;
       throw err;
     }
@@ -132,31 +135,59 @@
       .sort((a, b) => (/flash/.test(b) - /flash/.test(a)) || b.localeCompare(a));
   }
 
-  /** Choisit le meilleur modèle Gemini disponible (flash stable de préférence). */
-  function pickGeminiModel(models) {
-    const stable = models.filter((m) => !/preview|exp|thinking|lite|nano/.test(m));
-    return stable.find((m) => /flash/.test(m)) || models.find((m) => /flash/.test(m)) || stable[0] || models[0];
+  /** Classe les modèles Gemini du plus adapté au moins adapté pour la traduction rapide. */
+  function rankGeminiModels(models) {
+    const score = (m) => {
+      const unstable = /preview|exp|thinking/.test(m) ? 10 : 0;
+      if (/nano|gemma/.test(m)) return 50 + unstable;
+      if (/flash/.test(m) && !/lite/.test(m)) return 0 + unstable;
+      if (/flash-lite|lite/.test(m)) return 1 + unstable;
+      if (/pro/.test(m)) return 3 + unstable;
+      return 5 + unstable;
+    };
+    return [...models].sort((a, b) => score(a) - score(b) || b.localeCompare(a));
   }
 
+  function pickGeminiModel(models) { return rankGeminiModels(models)[0]; }
+
+  // Erreurs passagères : surcharge, erreur serveur, quota par modèle
+  const TRANSIENT = new Set([429, 500, 502, 503, 504, 529]);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
   /**
-   * Comme complete(), mais pour Gemini : si le modèle est introuvable (404),
-   * récupère la liste des modèles disponibles et réessaie avec le plus adapté.
-   * Renvoie { text, model }.
+   * Comme complete(), avec reprise sur erreur :
+   * - erreur passagère (503 surcharge…) : nouvel essai après une courte pause ;
+   * - Gemini : si le modèle est introuvable (404) ou reste indisponible, essaie
+   *   d'autres modèles disponibles pour la clé.
+   * Renvoie { text, model, persist } ; persist = le modèle configuré n'existe plus.
    */
   async function completeWithFallback(cfg, system, user) {
     const model = cfg.model || PROVIDERS[cfg.provider].defaultModel;
-    try {
-      return { text: await complete({ ...cfg, model }, system, user), model };
-    } catch (e) {
-      if (cfg.provider !== "gemini" || e.status !== 404) throw e;
-      const models = await listGeminiModels(cfg);
-      const next = pickGeminiModel(models);
-      if (!next || next === model) throw new Error(`Modèle « ${model} » introuvable et aucun autre modèle Gemini disponible.`);
-      return { text: await complete({ ...cfg, model: next }, system, user), model: next };
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return { text: await complete({ ...cfg, model }, system, user), model, persist: false };
+      } catch (e) {
+        lastErr = e;
+        if (!TRANSIENT.has(e.status) || attempt === 1) break;
+        await sleep(1500);
+      }
     }
+    if (cfg.provider !== "gemini" || !(lastErr.status === 404 || TRANSIENT.has(lastErr.status))) throw lastErr;
+
+    const candidates = rankGeminiModels(await listGeminiModels(cfg)).filter((m) => m !== model).slice(0, 4);
+    for (const next of candidates) {
+      try {
+        return { text: await complete({ ...cfg, model: next }, system, user), model: next, persist: lastErr.status === 404 };
+      } catch (e) {
+        if (!(e.status === 404 || TRANSIENT.has(e.status))) throw e;
+      }
+    }
+    if (lastErr.status === 404) throw new Error(`Modèle « ${model} » introuvable et aucun autre modèle Gemini n'a répondu.`);
+    throw new Error("Tous les modèles Gemini sont surchargés en ce moment. Réessayez dans quelques instants.");
   }
 
-  const api = { PROVIDERS, complete, completeWithFallback, listGeminiModels, pickGeminiModel };
+  const api = { PROVIDERS, complete, completeWithFallback, listGeminiModels, pickGeminiModel, rankGeminiModels };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CtxProviders = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

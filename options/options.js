@@ -126,7 +126,7 @@ $("test").addEventListener("click", async () => {
     ]);
     if (!r) throw new Error("Le script d'arrière-plan n'a pas répondu (rechargez l'extension).");
     if (r.ok) {
-      const changed = r.model && r.model !== cfg.model;
+      const changed = r.persist && r.model !== cfg.model;
       if (changed) $("model").value = r.model;
       setStatus(st, changed ? `Connexion réussie ✓ (modèle remplacé par ${r.model}, pensez à enregistrer)` : "Connexion réussie ✓", true);
     }
