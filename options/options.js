@@ -28,11 +28,11 @@ const HINTS = {
   },
 };
 
-let state = { provider: "anthropic", providers: {}, targetLang: "fr", sentences: 2, showIcon: true };
+let state = { provider: "anthropic", providers: {}, targetLang: "fr", secondaryLang: "fr", sentences: 2, showIcon: true };
 
 function fillSelects() {
   for (const [id, p] of Object.entries(PROVIDERS)) $("provider").add(new Option(p.label, id));
-  for (const [code, name] of LANGS) $("targetLang").add(new Option(name, code));
+  for (const [code, name] of LANGS) { $("targetLang").add(new Option(name, code)); $("secondaryLang").add(new Option(name, code)); }
 }
 
 function readProviderFields() {
@@ -102,6 +102,7 @@ async function load() {
   state = { ...state, targetLang: (chrome.i18n.getUILanguage() || "fr").split("-")[0], ...s };
   $("provider").value = state.provider;
   $("targetLang").value = state.targetLang;
+  $("secondaryLang").value = state.secondaryLang;
   $("sentences").value = state.sentences;
   $("showIcon").checked = state.showIcon;
   showProvider(state.provider);
@@ -143,6 +144,7 @@ $("save").addEventListener("click", async () => {
       provider: state.provider,
       providers: state.providers,
       targetLang: $("targetLang").value,
+      secondaryLang: $("secondaryLang").value,
       sentences: Math.max(0, Math.min(10, parseInt($("sentences").value, 10) || 0)),
       showIcon: $("showIcon").checked,
     });

@@ -5,6 +5,7 @@ const DEFAULTS = {
   provider: "anthropic",
   providers: {}, // { [id]: { apiKey, model, baseUrl } }
   targetLang: (chrome.i18n.getUILanguage() || "fr").split("-")[0],
+  secondaryLang: "fr",
   sentences: 2,
   showIcon: true,
 };
@@ -50,7 +51,14 @@ async function translate(ctx, overrideLang) {
   if (cache.has(key)) return cache.get(key);
   const { text, model, persist } = await CtxProviders.completeWithFallback(cfg, CtxPrompt.SYSTEM_PROMPT, CtxPrompt.buildUserMessage(ctx, target));
   if (persist) await saveModel(s, model); // le modèle configuré n'existe plus
-  const result = { ...CtxPrompt.parseResponse(text), targetLang: target, model };
+  let result = { ...CtxPrompt.parseResponse(text), targetLang: target, model };
+  // Texte déjà dans la langue cible : traduire vers une langue secondaire
+  const base = (l) => (l || "").toLowerCase().split(/[-_]/)[0];
+  if (!overrideLang && base(result.sourceLang) === base(target)) {
+    const alt = base(s.secondaryLang) && base(s.secondaryLang) !== base(target) ? s.secondaryLang : (base(target) === "en" ? "fr" : "en");
+    const again = await CtxProviders.completeWithFallback({ ...cfg, model }, CtxPrompt.SYSTEM_PROMPT, CtxPrompt.buildUserMessage(ctx, alt));
+    result = { ...CtxPrompt.parseResponse(again.text), targetLang: alt, model: again.model };
+  }
   cache.set(key, result);
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
   return result;

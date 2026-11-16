@@ -4,6 +4,9 @@
   window.__ctxTranslateLoaded = true;
 
   const settings = { sentences: 2, showIcon: true, targetLang: "fr" };
+  const LANGS = [["fr","Français"],["en","English"],["es","Español"],["de","Deutsch"],["it","Italiano"],["pt","Português"],
+    ["nl","Nederlands"],["he","עברית"],["ar","العربية"],["ru","Русский"],["uk","Українська"],["pl","Polski"],["tr","Türkçe"],
+    ["zh","中文"],["ja","日本語"],["ko","한국어"]];
   const refresh = () =>
     chrome.runtime.sendMessage({ type: "get-settings" })
       .then((r) => { if (r && r.ok) Object.assign(settings, r); })
@@ -24,6 +27,9 @@
       background: #fff; color: #1f2937; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.18);
       font-size: 14px; line-height: 1.45; text-align: start; }
     .head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #6b7280; margin-bottom: 6px; gap: 8px; }
+    .head select { font-size: 12px; border: 1px solid #d1d5db; border-radius: 5px; background: transparent; color: inherit; padding: 1px 2px; cursor: pointer; }
+    .head .left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .head .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .head button { border: none; background: none; cursor: pointer; color: #6b7280; font-size: 16px; padding: 0 2px; }
     .tr { font-size: 15px; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
     .note { margin-top: 8px; padding: 6px 8px; background: #eef2ff; border-radius: 6px; font-size: 12.5px; color: #3730a3; }
@@ -41,12 +47,13 @@
       .note { background: #312e81; color: #e0e7ff; }
       .alts { color: #d1d5db; } .alts span { border-color: #4b5563; }
       .actions button { background: #374151; color: #f3f4f6; border-color: #4b5563; }
+      .head select { border-color: #4b5563; } .head option { background: #1f2937; }
       .err { color: #fca5a5; }
     }
   </style>
   <button class="icon" title="Traduire avec le contexte">文</button>
   <div class="pop" role="dialog">
-    <div class="head"><span class="meta"></span><button class="close" title="Fermer">×</button></div>
+    <div class="head"><span class="left"><span class="meta"></span><select class="lang" title="Langue cible"></select></span><button class="close" title="Fermer">×</button></div>
     <div class="body"></div>
   </div>`;
 
@@ -54,6 +61,13 @@
   const pop = shadow.querySelector(".pop");
   const meta = shadow.querySelector(".meta");
   const body = shadow.querySelector(".body");
+  const langSel = shadow.querySelector(".lang");
+  for (const [c, n] of LANGS) langSel.add(new Option(n, c));
+  langSel.addEventListener("change", () => {
+    settings.targetLang = langSel.value;
+    chrome.storage.local.set({ targetLang: langSel.value }).catch(() => {});
+    if (lastCtx && lastRect) run(lastCtx, lastRect, true);
+  });
   let lastCtx = null, lastRect = null, reqId = 0;
 
   const mount = () => { if (!host.isConnected) (document.body || document.documentElement).appendChild(host); };
@@ -81,10 +95,11 @@
 
   function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
-  async function run(ctx, rect) {
+  async function run(ctx, rect, explicitLang = false) {
     mount(); hideIcon();
     lastCtx = ctx; lastRect = rect;
     const id = ++reqId;
+    langSel.value = settings.targetLang;
     meta.textContent = "Traduction…";
     body.innerHTML = `<span class="spin"></span>Analyse du contexte…`;
     pop.style.display = "block";
@@ -92,7 +107,7 @@
     let r;
     try {
       r = await Promise.race([
-        chrome.runtime.sendMessage({ type: "translate", ctx }),
+        chrome.runtime.sendMessage({ type: "translate", ctx, targetLang: explicitLang ? settings.targetLang : undefined }),
         new Promise((res) => setTimeout(() => res({ ok: false, error: "Pas de réponse de l'extension après 100 s." }), 100000)),
       ]);
     } catch (e) { r = { ok: false, error: "L'extension a été rechargée : actualisez la page." }; }
@@ -107,7 +122,9 @@
       return;
     }
     const t = r.result;
-    meta.textContent = `${t.sourceLang ? t.sourceLang.toUpperCase() : "?"} → ${t.targetLang.toUpperCase()} · ${t.model}`;
+    langSel.value = t.targetLang;
+    meta.textContent = `${t.sourceLang ? t.sourceLang.toUpperCase() : "?"} →`;
+    meta.title = langSel.title = `Modèle : ${t.model}`;
     body.innerHTML = `<div class="tr">${esc(t.translation)}</div>`
       + (t.note ? `<div class="note">${esc(t.note)}</div>` : "")
       + (t.alternatives.length ? `<div class="alts">Autres : ${t.alternatives.map((a) => `<span>${esc(a)}</span>`).join("")}</div>` : "")
