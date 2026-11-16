@@ -25,6 +25,9 @@
   function buildContextSnippet(blockText, selStart, selEnd, opts = {}) {
     const n = opts.sentences ?? 2;
     const max = opts.maxChars ?? MAX_CONTEXT;
+    // Ignore les espaces en bordure (le double-clic sélectionne l'espace suivant)
+    while (selStart < selEnd && /\s/.test(blockText[selStart])) selStart++;
+    while (selEnd > selStart && /\s/.test(blockText[selEnd - 1])) selEnd--;
     const sentences = splitSentences(blockText, opts.lang);
     let first = 0, last = sentences.length - 1;
     for (let i = 0; i < sentences.length; i++) {

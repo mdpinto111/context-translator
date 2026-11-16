@@ -18,6 +18,12 @@ test("buildContextSnippet balise la sélection et garde les phrases voisines", (
   assert.doesNotMatch(out, /went home/);
 });
 
+test("buildContextSnippet ignore les espaces autour de la sélection", () => {
+  const s = text.indexOf("bank");
+  const out = buildContextSnippet(text, s - 1, s + 5, { sentences: 0 });
+  assert.match(out, /the <selection>bank<\/selection> and/);
+});
+
 test("buildContextSnippet respecte la limite de caractères", () => {
   const long = Array.from({ length: 200 }, (_, i) => `Sentence number ${i} is here.`).join(" ");
   const s = long.indexOf("number 100");
