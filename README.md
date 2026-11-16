@@ -11,6 +11,13 @@ A browser extension (Chrome, Edge, Brave, Opera, Firefox ≥ 121) that translate
 | Ollama (local) | none | `http://localhost:11434`, no data leaves your machine |
 | OpenAI-compatible | optional | LM Studio, OpenRouter, Mistral, Groq, vLLM… (base URL ending in `/v1`) |
 
+**Free option — Gemini:**
+1. Create a free API key (no credit card) at https://aistudio.google.com/app/apikey.
+2. In the extension options, choose *Gemini (Google)* and paste the key: the list of models available to your key loads automatically (a "flash" model is fast and included in the free tier).
+3. Click *Test connection*, then *Save*.
+
+Note: on Google's free tier, requests may be used to improve Google's models.
+
 **Ollama:** if the connection test returns a 403 error, restart Ollama with
 `OLLAMA_ORIGINS="chrome-extension://*,moz-extension://*"`.
 

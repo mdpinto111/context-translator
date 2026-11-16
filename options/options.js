@@ -10,7 +10,12 @@ const LANGS = [
 const HINTS = {
   anthropic: { key: "Créez une clé sur console.anthropic.com.", url: "" },
   openai: { key: "Créez une clé sur platform.openai.com.", url: "" },
-  gemini: { key: "Créez une clé gratuite sur aistudio.google.com.", url: "" },
+  gemini: {
+    key: "Gratuite, sans carte bancaire.",
+    keyLink: "https://aistudio.google.com/app/apikey",
+    model: "La liste des modèles disponibles se charge automatiquement après la saisie de la clé. Un modèle « flash » est rapide et inclus dans l'offre gratuite.",
+    url: "",
+  },
   ollama: {
     key: "",
     model: "Nom d'un modèle installé (ollama pull llama3.1). Liste : ollama list.",
@@ -44,14 +49,37 @@ function showProvider(id) {
   const h = HINTS[id] || {};
   $("keyBlock").style.display = id === "ollama" ? "none" : "";
   $("apiKey").value = c.apiKey || "";
-  $("keyHint").textContent = (h.key ? h.key + " " : "") + "Stockée localement, envoyée uniquement au fournisseur choisi.";
+  $("keyHint").textContent = (h.key ? h.key + " " : "") + "Stockée localement, envoyée uniquement au fournisseur choisi. ";
+  if (h.keyLink) {
+    const a = document.createElement("a");
+    a.href = h.keyLink; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = "Obtenir une clé →";
+    $("keyHint").appendChild(a);
+  }
   $("model").value = c.model || p.defaultModel;
   $("modelList").innerHTML = p.models.map((m) => `<option value="${m}">`).join("");
   $("modelHint").textContent = h.model || "Choisissez dans la liste ou saisissez un autre identifiant.";
   $("baseUrl").value = c.baseUrl || p.defaultBaseUrl;
   $("urlHint").textContent = h.url || "Laissez la valeur par défaut sauf si vous passez par un proxy.";
   $("testStatus").textContent = "";
+  if (id === "gemini" && c.apiKey) loadGeminiModels();
 }
+
+async function loadGeminiModels() {
+  const key = $("apiKey").value.trim();
+  if (state.provider !== "gemini" || !key) return;
+  try {
+    const models = await CtxProviders.listGeminiModels({ apiKey: key, baseUrl: $("baseUrl").value.trim() });
+    if (state.provider !== "gemini" || !models.length) return;
+    $("modelList").innerHTML = models.map((m) => `<option value="${m}">`).join("");
+    if (!models.includes($("model").value.trim())) $("model").value = models.find((m) => /flash/.test(m)) || models[0];
+    $("modelHint").textContent = `${models.length} modèles disponibles avec cette clé. Effacez le champ pour voir la liste.`;
+  } catch (e) {
+    $("modelHint").textContent = e.message;
+  }
+}
+
+$("apiKey").addEventListener("change", loadGeminiModels);
 
 function currentCfg() {
   readProviderFields();

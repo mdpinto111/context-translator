@@ -107,7 +107,21 @@
     }
   }
 
-  const api = { PROVIDERS, complete };
+  /** Liste les modèles Gemini utilisables pour generateContent avec la clé fournie. */
+  async function listGeminiModels(cfg) {
+    const base = trim(cfg.baseUrl || PROVIDERS.gemini.defaultBaseUrl);
+    let res;
+    try { res = await fetch(`${base}/models?pageSize=1000`, { headers: { "x-goog-api-key": cfg.apiKey } }); }
+    catch (_) { throw new Error("Impossible de joindre l'API Gemini."); }
+    if (!res.ok) throw new Error(res.status === 400 || res.status === 403 ? "Clé API Gemini invalide." : `Erreur API (${res.status})`);
+    const data = await res.json();
+    return (data.models || [])
+      .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /gemini/.test(m.name) && !/embedding|image|tts|audio|live/.test(m.name))
+      .map((m) => m.name.replace(/^models\//, ""))
+      .sort((a, b) => (/flash/.test(b) - /flash/.test(a)) || b.localeCompare(a));
+  }
+
+  const api = { PROVIDERS, complete, listGeminiModels };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CtxProviders = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
