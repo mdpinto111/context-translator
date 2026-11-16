@@ -51,8 +51,9 @@ test("parseResponse se replie sur le texte brut", () => {
 
 const providers = require("../src/providers.js");
 
-test("pickGeminiModel préfère un flash stable", () => {
-  assert.strictEqual(providers.pickGeminiModel(["gemini-3-pro", "gemini-3-flash-preview", "gemini-3-flash", "gemini-3-flash-lite"]), "gemini-3-flash");
+test("pickGeminiModel préfère un flash-lite stable, puis flash", () => {
+  assert.strictEqual(providers.pickGeminiModel(["gemini-3-pro", "gemini-3-flash-preview", "gemini-3-flash", "gemini-3-flash-lite"]), "gemini-3-flash-lite");
+  assert.strictEqual(providers.pickGeminiModel(["gemini-3-pro", "gemini-3-flash-lite-preview", "gemini-3-flash"]), "gemini-3-flash");
 });
 
 test("completeWithFallback bascule sur un modèle disponible en cas de 404", async () => {

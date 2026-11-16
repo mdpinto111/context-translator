@@ -18,8 +18,8 @@
     gemini: {
       label: "Gemini (Google)",
       needsKey: true,
-      defaultModel: "gemini-flash-latest",
-      models: ["gemini-flash-latest", "gemini-pro-latest"],
+      defaultModel: "gemini-flash-lite-latest",
+      models: ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-pro-latest"],
       defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
     },
     ollama: {
@@ -49,23 +49,28 @@
   };
 
   const TIMEOUT_MS = 45000;
+  const GEMINI_TIMEOUT_MS = 20000; // au-delà, on essaie un autre modèle
 
-  async function fetchWithTimeout(url, init = {}) {
+  async function fetchWithTimeout(url, init = {}, timeoutMs = TIMEOUT_MS) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       return await fetch(url, { ...init, signal: ctrl.signal });
     } catch (e) {
       const host = new URL(url).host;
-      if (e.name === "AbortError") throw new Error(`Pas de réponse de ${host} après ${TIMEOUT_MS / 1000} s.`);
+      if (e.name === "AbortError") {
+        const err = new Error(`Pas de réponse de ${host} après ${timeoutMs / 1000} s.`);
+        err.status = 408; // traité comme une erreur passagère
+        throw err;
+      }
       throw new Error(`Impossible de joindre ${host} (réseau, serveur arrêté ou permission manquante).`);
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async function post(url, headers, body) {
-    const res = await fetchWithTimeout(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+  async function post(url, headers, body, timeoutMs) {
+    const res = await fetchWithTimeout(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) }, timeoutMs);
     if (!res.ok) {
       let detail = "";
       try { const j = await res.json(); detail = j.error?.message || j.error || ""; } catch (_) {}
@@ -75,6 +80,13 @@
       throw err;
     }
     return res.json();
+  }
+
+  /** Réglage de réflexion le plus bas accepté selon la génération du modèle. */
+  function geminiThinking(model) {
+    if (/gemini-2.5/.test(model)) return /pro/.test(model) ? { thinkingBudget: 128 } : { thinkingBudget: 0 };
+    if (/gemini-(1|2.0)/.test(model)) return null;
+    return { thinkingLevel: "low" }; // Gemini 3+ et alias -latest
   }
 
   const trim = (u) => (u || "").replace(/\/+$/, "");
@@ -97,12 +109,22 @@
         return (d.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
       }
       case "gemini": {
-        const d = await post(`${base}/models/${encodeURIComponent(model)}:generateContent`, { "x-goog-api-key": cfg.apiKey }, {
+        const url = `${base}/models/${encodeURIComponent(model)}:generateContent`;
+        const headers = { "x-goog-api-key": cfg.apiKey };
+        const body = (thinkingConfig) => ({
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: "user", parts: [{ text: user }] }],
-          generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
+          generationConfig: { temperature: 0.2, responseMimeType: "application/json", ...(thinkingConfig ? { thinkingConfig } : {}) },
         });
-        return (d.candidates?.[0]?.content?.parts || []).map((x) => x.text || "").join("");
+        let d;
+        try {
+          // Réflexion minimale : inutile pour traduire et très lente
+          d = await post(url, headers, body(geminiThinking(model)), GEMINI_TIMEOUT_MS);
+        } catch (e) {
+          if (e.status !== 400 || /api key/i.test(e.message)) throw e;
+          d = await post(url, headers, body(null), GEMINI_TIMEOUT_MS); // modèle qui refuse ce réglage
+        }
+        return (d.candidates?.[0]?.content?.parts || []).filter((x) => !x.thought).map((x) => x.text || "").join("");
       }
       case "ollama": {
         const d = await post(`${base}/api/chat`, {}, {
@@ -140,8 +162,8 @@
     const score = (m) => {
       const unstable = /preview|exp|thinking/.test(m) ? 10 : 0;
       if (/nano|gemma/.test(m)) return 50 + unstable;
-      if (/flash/.test(m) && !/lite/.test(m)) return 0 + unstable;
-      if (/flash-lite|lite/.test(m)) return 1 + unstable;
+      if (/flash-lite|lite/.test(m)) return 0 + unstable; // le plus rapide, suffisant pour traduire
+      if (/flash/.test(m)) return 1 + unstable;
       if (/pro/.test(m)) return 3 + unstable;
       return 5 + unstable;
     };
@@ -151,7 +173,13 @@
   function pickGeminiModel(models) { return rankGeminiModels(models)[0]; }
 
   // Erreurs passagères : surcharge, erreur serveur, quota par modèle
-  const TRANSIENT = new Set([429, 500, 502, 503, 504, 529]);
+  const TRANSIENT = new Set([408, 429, 500, 502, 503, 504, 529]);
+  // Modèles récemment surchargés ou trop lents : évités pendant 5 min
+  const cooldown = new Map();
+  const COOLDOWN_MS = 5 * 60 * 1000;
+  const isCooling = (m) => (cooldown.get(m) || 0) > Date.now();
+  const markBusy = (m) => cooldown.set(m, Date.now() + COOLDOWN_MS);
+
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /**
@@ -164,23 +192,27 @@
   async function completeWithFallback(cfg, system, user) {
     const model = cfg.model || PROVIDERS[cfg.provider].defaultModel;
     let lastErr;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    if (cfg.provider === "gemini" && isCooling(model)) {
+      lastErr = Object.assign(new Error("Modèle surchargé récemment."), { status: 503 });
+    } else for (let attempt = 0; attempt < 2; attempt++) {
       try {
         return { text: await complete({ ...cfg, model }, system, user), model, persist: false };
       } catch (e) {
         lastErr = e;
-        if (!TRANSIENT.has(e.status) || attempt === 1) break;
+        if (!TRANSIENT.has(e.status) || e.status === 408 || attempt === 1) break;
         await sleep(1500);
       }
     }
     if (cfg.provider !== "gemini" || !(lastErr.status === 404 || TRANSIENT.has(lastErr.status))) throw lastErr;
+    if (TRANSIENT.has(lastErr.status)) markBusy(model);
 
-    const candidates = rankGeminiModels(await listGeminiModels(cfg)).filter((m) => m !== model).slice(0, 4);
+    const candidates = rankGeminiModels(await listGeminiModels(cfg)).filter((m) => m !== model && !isCooling(m)).slice(0, 3);
     for (const next of candidates) {
       try {
         return { text: await complete({ ...cfg, model: next }, system, user), model: next, persist: lastErr.status === 404 };
       } catch (e) {
         if (!(e.status === 404 || TRANSIENT.has(e.status))) throw e;
+        if (TRANSIENT.has(e.status)) markBusy(next);
       }
     }
     if (lastErr.status === 404) throw new Error(`Modèle « ${model} » introuvable et aucun autre modèle Gemini n'a répondu.`);
