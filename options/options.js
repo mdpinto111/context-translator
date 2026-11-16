@@ -8,23 +8,23 @@ const LANGS = [
 ];
 
 const HINTS = {
-  anthropic: { key: "Créez une clé sur console.anthropic.com.", url: "" },
-  openai: { key: "Créez une clé sur platform.openai.com.", url: "" },
+  anthropic: { key: "Create a key at console.anthropic.com.", url: "" },
+  openai: { key: "Create a key at platform.openai.com.", url: "" },
   gemini: {
-    key: "Gratuite, sans carte bancaire.",
+    key: "Free, no credit card required.",
     keyLink: "https://aistudio.google.com/app/apikey",
-    model: "La liste des modèles disponibles se charge automatiquement après la saisie de la clé. Un modèle « flash » est rapide et inclus dans l'offre gratuite.",
+    model: "The list of available models loads automatically once you enter the key. \"flash\" models are fast and included in the free tier.",
     url: "",
   },
   ollama: {
     key: "",
-    model: "Nom d'un modèle installé (ollama pull llama3.1). Liste : ollama list.",
-    url: "Si Ollama refuse la requête (403), lancez-le avec OLLAMA_ORIGINS=\"chrome-extension://*,moz-extension://*\".",
+    model: "Name of an installed model (ollama pull llama3.1). List them with: ollama list.",
+    url: "If Ollama rejects the request (403), start it with OLLAMA_ORIGINS=\"chrome-extension://*,moz-extension://*\".",
   },
   custom: {
-    key: "Facultative (OpenRouter, Mistral, Groq… en exigent une ; LM Studio non).",
-    model: "Identifiant exact du modèle côté serveur.",
-    url: "Doit se terminer par /v1, ex. https://openrouter.ai/api/v1 ou http://localhost:1234/v1.",
+    key: "Optional (OpenRouter, Mistral, Groq… require one; LM Studio does not).",
+    model: "Exact model identifier on the server.",
+    url: "Must end with /v1, e.g. https://openrouter.ai/api/v1 or http://localhost:1234/v1.",
   },
 };
 
@@ -49,18 +49,18 @@ function showProvider(id) {
   const h = HINTS[id] || {};
   $("keyBlock").style.display = id === "ollama" ? "none" : "";
   $("apiKey").value = c.apiKey || "";
-  $("keyHint").textContent = (h.key ? h.key + " " : "") + "Stockée localement, envoyée uniquement au fournisseur choisi. ";
+  $("keyHint").textContent = (h.key ? h.key + " " : "") + "Stored locally, sent only to the selected provider. ";
   if (h.keyLink) {
     const a = document.createElement("a");
     a.href = h.keyLink; a.target = "_blank"; a.rel = "noopener";
-    a.textContent = "Obtenir une clé →";
+    a.textContent = "Get a key →";
     $("keyHint").appendChild(a);
   }
   $("model").value = c.model || p.defaultModel;
   $("modelList").innerHTML = p.models.map((m) => `<option value="${m}">`).join("");
-  $("modelHint").textContent = h.model || "Choisissez dans la liste ou saisissez un autre identifiant.";
+  $("modelHint").textContent = h.model || "Pick from the list or type another model ID.";
   $("baseUrl").value = c.baseUrl || p.defaultBaseUrl;
-  $("urlHint").textContent = h.url || "Laissez la valeur par défaut sauf si vous passez par un proxy.";
+  $("urlHint").textContent = h.url || "Keep the default unless you use a proxy.";
   $("testStatus").textContent = "";
   if (id === "gemini" && c.apiKey) loadGeminiModels();
 }
@@ -73,7 +73,7 @@ async function loadGeminiModels() {
     if (state.provider !== "gemini" || !models.length) return;
     $("modelList").innerHTML = models.map((m) => `<option value="${m}">`).join("");
     if (!models.includes($("model").value.trim())) $("model").value = models.find((m) => /flash/.test(m)) || models[0];
-    $("modelHint").textContent = `${models.length} modèles disponibles avec cette clé. Effacez le champ pour voir la liste.`;
+    $("modelHint").textContent = `${models.length} models available with this key. Clear the field to see the list.`;
   } catch (e) {
     $("modelHint").textContent = e.message;
   }
@@ -87,12 +87,12 @@ function currentCfg() {
   return { provider: state.provider, ...state.providers[state.provider] };
 }
 
-// Demande l'accès à un hôte qui n'est pas déjà couvert par host_permissions (doit être appelé lors d'un clic).
+// Requests access to a host not already covered by host_permissions (must run during a click).
 async function ensureHostPermission(baseUrl) {
   let origin;
-  try { origin = new URL(baseUrl).origin + "/*"; } catch (_) { throw new Error("URL de l'API invalide."); }
+  try { origin = new URL(baseUrl).origin + "/*"; } catch (_) { throw new Error("Invalid API URL."); }
   if (await chrome.permissions.contains({ origins: [origin] })) return;
-  if (!(await chrome.permissions.request({ origins: [origin] }))) throw new Error(`Permission refusée pour ${origin}`);
+  if (!(await chrome.permissions.request({ origins: [origin] }))) throw new Error(`Permission denied for ${origin}`);
 }
 
 function setStatus(el, text, ok) { el.textContent = text; el.className = "status " + (ok ? "ok" : "err"); }
@@ -117,19 +117,19 @@ $("provider").addEventListener("change", (e) => {
 $("test").addEventListener("click", async () => {
   const st = $("testStatus");
   const cfg = currentCfg();
-  setStatus(st, "Test en cours…", true);
+  setStatus(st, "Testing…", true);
   try {
     await ensureHostPermission(cfg.baseUrl || PROVIDERS[cfg.provider].defaultBaseUrl);
     const r = await Promise.race([
       chrome.runtime.sendMessage({ type: "test-provider", cfg }),
       new Promise((_, rej) => setTimeout(() => rej(new Error(
-        "Aucune réponse du script d'arrière-plan. Ouvrez chrome://extensions → « service worker » de l'extension et regardez la console.")), 100000)),
+        "No response from the background script. Open chrome://extensions → the extension's \"service worker\" link and check the console.")), 100000)),
     ]);
-    if (!r) throw new Error("Le script d'arrière-plan n'a pas répondu (rechargez l'extension).");
+    if (!r) throw new Error("The background script did not respond (reload the extension).");
     if (r.ok) {
       const changed = r.persist && r.model !== cfg.model;
       if (changed) $("model").value = r.model;
-      setStatus(st, changed ? `Connexion réussie ✓ (modèle remplacé par ${r.model}, pensez à enregistrer)` : "Connexion réussie ✓", true);
+      setStatus(st, changed ? `Connection OK ✓ (model replaced by ${r.model}, remember to save)` : "Connection OK ✓", true);
     }
     else setStatus(st, r.error, false);
   } catch (e) { setStatus(st, e.message, false); }
@@ -148,7 +148,7 @@ $("save").addEventListener("click", async () => {
       sentences: Math.max(0, Math.min(10, parseInt($("sentences").value, 10) || 0)),
       showIcon: $("showIcon").checked,
     });
-    setStatus(st, "Enregistré ✓", true);
+    setStatus(st, "Saved ✓", true);
     setTimeout(() => { st.textContent = ""; }, 2000);
   } catch (e) { setStatus(st, e.message, false); }
 });

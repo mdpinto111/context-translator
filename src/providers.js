@@ -1,4 +1,4 @@
-// Adaptateurs pour les différents fournisseurs de LLM.
+// Adapters for the supported LLM providers.
 (function (root) {
   const PROVIDERS = {
     anthropic: {
@@ -30,7 +30,7 @@
       defaultBaseUrl: "http://localhost:11434",
     },
     custom: {
-      label: "Compatible OpenAI (LM Studio, OpenRouter, Mistral, Groq…)",
+      label: "OpenAI-compatible (LM Studio, OpenRouter, Mistral, Groq…)",
       needsKey: false,
       defaultModel: "",
       models: [],
@@ -39,17 +39,17 @@
   };
 
   const ERRORS = {
-    401: "Clé API invalide. Vérifiez-la dans les options.",
-    403: "Accès refusé (clé, droits, ou origine CORS refusée par le serveur local).",
-    404: "Modèle ou URL introuvable. Vérifiez les options.",
-    429: "Limite de requêtes atteinte, réessayez dans un instant.",
-    500: "Erreur interne du service, réessayez dans un instant.",
-    503: "Le modèle est surchargé en ce moment, réessayez dans un instant.",
-    529: "Le service est surchargé, réessayez dans un instant.",
+    401: "Invalid API key. Check it in the options.",
+    403: "Access denied (key, permissions, or CORS origin rejected by the local server).",
+    404: "Model or URL not found. Check the options.",
+    429: "Rate limit reached, try again in a moment.",
+    500: "Internal service error, try again in a moment.",
+    503: "The model is overloaded right now, try again in a moment.",
+    529: "The service is overloaded, try again in a moment.",
   };
 
   const TIMEOUT_MS = 45000;
-  const GEMINI_TIMEOUT_MS = 20000; // au-delà, on essaie un autre modèle
+  const GEMINI_TIMEOUT_MS = 20000; // beyond this, try another model
 
   async function fetchWithTimeout(url, init = {}, timeoutMs = TIMEOUT_MS) {
     const ctrl = new AbortController();
@@ -59,11 +59,11 @@
     } catch (e) {
       const host = new URL(url).host;
       if (e.name === "AbortError") {
-        const err = new Error(`Pas de réponse de ${host} après ${timeoutMs / 1000} s.`);
-        err.status = 408; // traité comme une erreur passagère
+        const err = new Error(`No response from ${host} after ${timeoutMs / 1000} s.`);
+        err.status = 408; // treated as a transient error
         throw err;
       }
-      throw new Error(`Impossible de joindre ${host} (réseau, serveur arrêté ou permission manquante).`);
+      throw new Error(`Cannot reach ${host} (network, server down, or missing permission).`);
     } finally {
       clearTimeout(timer);
     }
@@ -75,18 +75,18 @@
       let detail = "";
       try { const j = await res.json(); detail = j.error?.message || j.error || ""; } catch (_) {}
       const badKey = res.status === 400 && /api key/i.test(String(detail));
-      const err = new Error(badKey ? `${ERRORS[401]} (${detail})` : ERRORS[res.status] || `Erreur API (${res.status}) ${detail}`);
+      const err = new Error(badKey ? `${ERRORS[401]} (${detail})` : ERRORS[res.status] || `API error (${res.status}) ${detail}`);
       err.status = res.status;
       throw err;
     }
     return res.json();
   }
 
-  /** Réglage de réflexion le plus bas accepté selon la génération du modèle. */
+  /** Lowest thinking setting accepted by each Gemini model generation. */
   function geminiThinking(model) {
     if (/gemini-2.5/.test(model)) return /pro/.test(model) ? { thinkingBudget: 128 } : { thinkingBudget: 0 };
     if (/gemini-(1|2.0)/.test(model)) return null;
-    return { thinkingLevel: "low" }; // Gemini 3+ et alias -latest
+    return { thinkingLevel: "low" }; // Gemini 3+ and -latest aliases
   }
 
   const trim = (u) => (u || "").replace(/\/+$/, "");
@@ -94,10 +94,10 @@
   /** cfg = { provider, apiKey, model, baseUrl } */
   async function complete(cfg, system, user) {
     const p = PROVIDERS[cfg.provider];
-    if (!p) throw new Error("Fournisseur inconnu.");
+    if (!p) throw new Error("Unknown provider.");
     const base = trim(cfg.baseUrl || p.defaultBaseUrl);
     const model = cfg.model || p.defaultModel;
-    if (!model) throw new Error("Aucun modèle configuré.");
+    if (!model) throw new Error("No model configured.");
 
     switch (cfg.provider) {
       case "anthropic": {
@@ -118,11 +118,11 @@
         });
         let d;
         try {
-          // Réflexion minimale : inutile pour traduire et très lente
+          // Minimal thinking: useless for translation and very slow
           d = await post(url, headers, body(geminiThinking(model)), GEMINI_TIMEOUT_MS);
         } catch (e) {
           if (e.status !== 400 || /api key/i.test(e.message)) throw e;
-          d = await post(url, headers, body(null), GEMINI_TIMEOUT_MS); // modèle qui refuse ce réglage
+          d = await post(url, headers, body(null), GEMINI_TIMEOUT_MS); // model that rejects this setting
         }
         return (d.candidates?.[0]?.content?.parts || []).filter((x) => !x.thought).map((x) => x.text || "").join("");
       }
@@ -145,11 +145,11 @@
     }
   }
 
-  /** Liste les modèles Gemini utilisables pour generateContent avec la clé fournie. */
+  /** Lists the Gemini models usable for generateContent with the given key. */
   async function listGeminiModels(cfg) {
     const base = trim(cfg.baseUrl || PROVIDERS.gemini.defaultBaseUrl);
     const res = await fetchWithTimeout(`${base}/models?pageSize=1000`, { headers: { "x-goog-api-key": cfg.apiKey } });
-    if (!res.ok) throw new Error(res.status === 400 || res.status === 403 ? "Clé API Gemini invalide." : `Erreur API (${res.status})`);
+    if (!res.ok) throw new Error(res.status === 400 || res.status === 403 ? "Invalid Gemini API key." : `API error (${res.status})`);
     const data = await res.json();
     return (data.models || [])
       .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /gemini/.test(m.name) && !/embedding|image|tts|audio|live/.test(m.name))
@@ -157,12 +157,12 @@
       .sort((a, b) => (/flash/.test(b) - /flash/.test(a)) || b.localeCompare(a));
   }
 
-  /** Classe les modèles Gemini du plus adapté au moins adapté pour la traduction rapide. */
+  /** Ranks Gemini models from most to least suitable for fast translation. */
   function rankGeminiModels(models) {
     const score = (m) => {
       const unstable = /preview|exp|thinking/.test(m) ? 10 : 0;
       if (/nano|gemma/.test(m)) return 50 + unstable;
-      if (/flash-lite|lite/.test(m)) return 0 + unstable; // le plus rapide, suffisant pour traduire
+      if (/flash-lite|lite/.test(m)) return 0 + unstable; // fastest, good enough for translation
       if (/flash/.test(m)) return 1 + unstable;
       if (/pro/.test(m)) return 3 + unstable;
       return 5 + unstable;
@@ -172,9 +172,9 @@
 
   function pickGeminiModel(models) { return rankGeminiModels(models)[0]; }
 
-  // Erreurs passagères : surcharge, erreur serveur, quota par modèle
+  // Transient errors: overload, server error, per-model quota
   const TRANSIENT = new Set([408, 429, 500, 502, 503, 504, 529]);
-  // Modèles récemment surchargés ou trop lents : évités pendant 5 min
+  // Recently overloaded or too-slow models: skipped for 5 min
   const cooldown = new Map();
   const COOLDOWN_MS = 5 * 60 * 1000;
   const isCooling = (m) => (cooldown.get(m) || 0) > Date.now();
@@ -183,17 +183,17 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /**
-   * Comme complete(), avec reprise sur erreur :
-   * - erreur passagère (503 surcharge…) : nouvel essai après une courte pause ;
-   * - Gemini : si le modèle est introuvable (404) ou reste indisponible, essaie
-   *   d'autres modèles disponibles pour la clé.
-   * Renvoie { text, model, persist } ; persist = le modèle configuré n'existe plus.
+   * Like complete(), with error recovery:
+   * - transient error (503 overload…): retry once after a short pause;
+   * - Gemini: if the model is not found (404) or stays unavailable, try other
+   *   models available for the key.
+   * Returns { text, model, persist }; persist = the configured model no longer exists.
    */
   async function completeWithFallback(cfg, system, user) {
     const model = cfg.model || PROVIDERS[cfg.provider].defaultModel;
     let lastErr;
     if (cfg.provider === "gemini" && isCooling(model)) {
-      lastErr = Object.assign(new Error("Modèle surchargé récemment."), { status: 503 });
+      lastErr = Object.assign(new Error("Model recently overloaded."), { status: 503 });
     } else for (let attempt = 0; attempt < 2; attempt++) {
       try {
         return { text: await complete({ ...cfg, model }, system, user), model, persist: false };
@@ -215,8 +215,8 @@
         if (TRANSIENT.has(e.status)) markBusy(next);
       }
     }
-    if (lastErr.status === 404) throw new Error(`Modèle « ${model} » introuvable et aucun autre modèle Gemini n'a répondu.`);
-    throw new Error("Tous les modèles Gemini sont surchargés en ce moment. Réessayez dans quelques instants.");
+    if (lastErr.status === 404) throw new Error(`Model "${model}" not found and no other Gemini model responded.`);
+    throw new Error("All Gemini models are overloaded right now. Try again in a few moments.");
   }
 
   const api = { PROVIDERS, complete, completeWithFallback, listGeminiModels, pickGeminiModel, rankGeminiModels };

@@ -5,11 +5,11 @@ const { buildUserMessage, parseResponse } = require("../src/prompt.js");
 
 const text = "The river was calm. We sat on the bank and watched the boats. Later it started to rain. We went home.";
 
-test("splitSentences découpe en phrases", () => {
+test("splitSentences splits text into sentences", () => {
   assert.strictEqual(splitSentences(text, "en").length, 4);
 });
 
-test("buildContextSnippet balise la sélection et garde les phrases voisines", () => {
+test("buildContextSnippet tags the selection and keeps neighboring sentences", () => {
   const s = text.indexOf("bank");
   const out = buildContextSnippet(text, s, s + 4, { sentences: 1, lang: "en" });
   assert.match(out, /on the <selection>bank<\/selection> and/);
@@ -18,13 +18,13 @@ test("buildContextSnippet balise la sélection et garde les phrases voisines", (
   assert.doesNotMatch(out, /went home/);
 });
 
-test("buildContextSnippet ignore les espaces autour de la sélection", () => {
+test("buildContextSnippet ignores whitespace around the selection", () => {
   const s = text.indexOf("bank");
   const out = buildContextSnippet(text, s - 1, s + 5, { sentences: 0 });
   assert.match(out, /the <selection>bank<\/selection> and/);
 });
 
-test("buildContextSnippet respecte la limite de caractères", () => {
+test("buildContextSnippet respects the character limit", () => {
   const long = Array.from({ length: 200 }, (_, i) => `Sentence number ${i} is here.`).join(" ");
   const s = long.indexOf("number 100");
   const out = buildContextSnippet(long, s, s + 10, { sentences: 50, maxChars: 300 });
@@ -32,31 +32,31 @@ test("buildContextSnippet respecte la limite de caractères", () => {
   assert.match(out, /<selection>number 100<\/selection>/);
 });
 
-test("buildUserMessage contient contexte et langue cible", () => {
+test("buildUserMessage includes context and target language", () => {
   const msg = buildUserMessage({ selection: "bank", context: "x <selection>bank</selection> y", pageTitle: "Rivers" }, "fr");
-  assert.match(msg, /français/);
+  assert.match(msg, /French/);
   assert.match(msg, /Page title: Rivers/);
   assert.match(msg, /<context>/);
 });
 
-test("parseResponse lit du JSON, même entouré de ``` ou de texte", () => {
+test("parseResponse reads JSON, even wrapped in ``` or text", () => {
   const r = parseResponse('```json\n{"translation":"rive","sourceLang":"en","alternatives":["berge"],"note":"contexte fluvial"}\n```');
   assert.deepStrictEqual(r, { translation: "rive", sourceLang: "en", alternatives: ["berge"], note: "contexte fluvial" });
   assert.strictEqual(parseResponse('Voici : {"translation":"banque"}').translation, "banque");
 });
 
-test("parseResponse se replie sur le texte brut", () => {
+test("parseResponse falls back to raw text", () => {
   assert.strictEqual(parseResponse("rive").translation, "rive");
 });
 
 const providers = require("../src/providers.js");
 
-test("pickGeminiModel préfère un flash-lite stable, puis flash", () => {
+test("pickGeminiModel prefers a stable flash-lite, then flash", () => {
   assert.strictEqual(providers.pickGeminiModel(["gemini-3-pro", "gemini-3-flash-preview", "gemini-3-flash", "gemini-3-flash-lite"]), "gemini-3-flash-lite");
   assert.strictEqual(providers.pickGeminiModel(["gemini-3-pro", "gemini-3-flash-lite-preview", "gemini-3-flash"]), "gemini-3-flash");
 });
 
-test("completeWithFallback bascule sur un modèle disponible en cas de 404", async () => {
+test("completeWithFallback switches to an available model on 404", async () => {
   const calls = [];
   global.fetch = async (url) => {
     calls.push(url);
@@ -72,7 +72,7 @@ test("completeWithFallback bascule sur un modèle disponible en cas de 404", asy
   assert.strictEqual(calls.length, 3);
 });
 
-test("completeWithFallback : 503 → nouvel essai, puis autre modèle, sans le mémoriser", async () => {
+test("completeWithFallback: 503 → retry, then another model, without persisting it", async () => {
   const calls = [];
   global.fetch = async (url) => {
     calls.push(url);
@@ -85,10 +85,10 @@ test("completeWithFallback : 503 → nouvel essai, puis autre modèle, sans le m
   };
   const r = await providers.completeWithFallback({ provider: "gemini", apiKey: "k", model: "gemini-busy" }, "s", "u");
   assert.deepStrictEqual(r, { text: "OK", model: "gemini-3-flash-lite", persist: false });
-  assert.strictEqual(calls.filter((u) => u.includes("gemini-busy:")).length, 2); // 1 essai + 1 reprise
+  assert.strictEqual(calls.filter((u) => u.includes("gemini-busy:")).length, 2); // 1 attempt + 1 retry
 });
 
-test("completeWithFallback ne bascule pas pour une clé invalide", async () => {
+test("completeWithFallback does not switch models on an invalid key", async () => {
   global.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: "API key not valid" } }) });
   await assert.rejects(providers.completeWithFallback({ provider: "gemini", apiKey: "bad", model: "m" }, "s", "u"), /API key not valid/);
 });

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Traduction contextuelle",
+  "name": "Context Translator",
   "version": "1.0.0",
-  "description": "Traduit la sélection en tenant compte du contexte de la page, grâce à Claude.",
+  "description": "Translates the selected text using the surrounding page context, powered by an LLM of your choice.",
   "permissions": [
     "contextMenus",
     "storage",
@@ -41,7 +41,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Traduction contextuelle — options"
+    "default_title": "Context Translator — options"
   },
   "icons": {
     "16": "icons/16.png",

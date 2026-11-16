@@ -1,4 +1,4 @@
-// Icône flottante + popup de traduction (Shadow DOM pour isoler le CSS).
+// Floating icon + translation popup (Shadow DOM to isolate from page CSS).
 (() => {
   if (window.__ctxTranslateLoaded) return;
   window.__ctxTranslateLoaded = true;
@@ -51,9 +51,9 @@
       .err { color: #fca5a5; }
     }
   </style>
-  <button class="icon" title="Traduire avec le contexte">文</button>
+  <button class="icon" title="Translate with context">文</button>
   <div class="pop" role="dialog">
-    <div class="head"><span class="left"><span class="meta"></span><select class="lang" title="Langue cible"></select></span><button class="close" title="Fermer">×</button></div>
+    <div class="head"><span class="left"><span class="meta"></span><select class="lang" title="Target language"></select></span><button class="close" title="Close">×</button></div>
     <div class="body"></div>
   </div>`;
 
@@ -100,23 +100,23 @@
     lastCtx = ctx; lastRect = rect;
     const id = ++reqId;
     langSel.value = settings.targetLang;
-    meta.textContent = "Traduction…";
-    body.innerHTML = `<span class="spin"></span>Analyse du contexte…`;
+    meta.textContent = "Translating…";
+    body.innerHTML = `<span class="spin"></span>Analyzing context…`;
     pop.style.display = "block";
     place(pop, rect, pop.offsetWidth, pop.offsetHeight);
     let r;
     try {
       r = await Promise.race([
         chrome.runtime.sendMessage({ type: "translate", ctx, targetLang: explicitLang ? settings.targetLang : undefined }),
-        new Promise((res) => setTimeout(() => res({ ok: false, error: "Pas de réponse de l'extension après 100 s." }), 100000)),
+        new Promise((res) => setTimeout(() => res({ ok: false, error: "No response from the extension after 100 s." }), 100000)),
       ]);
-    } catch (e) { r = { ok: false, error: "L'extension a été rechargée : actualisez la page." }; }
-    if (id !== reqId) return; // popup fermée ou nouvelle requête entre-temps
+    } catch (e) { r = { ok: false, error: "The extension was reloaded: please refresh the page." }; }
+    if (id !== reqId) return; // popup closed or a newer request started meanwhile
     if (!r || !r.ok) {
-      meta.textContent = "Erreur";
+      meta.textContent = "Error";
       body.innerHTML = r && r.error === "NO_KEY"
-        ? `<div class="err">Aucune clé API configurée pour ce fournisseur. <a class="opt">Ouvrir les options</a></div>`
-        : `<div class="err">${esc((r && r.error) || "Erreur inconnue")}</div>`;
+        ? `<div class="err">No API key configured for this provider. <a class="opt">Open options</a></div>`
+        : `<div class="err">${esc((r && r.error) || "Unknown error")}</div>`;
       const a = body.querySelector(".opt");
       if (a) a.onclick = () => chrome.runtime.sendMessage({ type: "open-options" });
       return;
@@ -124,13 +124,13 @@
     const t = r.result;
     langSel.value = t.targetLang;
     meta.textContent = `${t.sourceLang ? t.sourceLang.toUpperCase() : "?"} →`;
-    meta.title = langSel.title = `Modèle : ${t.model}`;
+    meta.title = langSel.title = `Model: ${t.model}`;
     body.innerHTML = `<div class="tr">${esc(t.translation)}</div>`
       + (t.note ? `<div class="note">${esc(t.note)}</div>` : "")
-      + (t.alternatives.length ? `<div class="alts">Autres : ${t.alternatives.map((a) => `<span>${esc(a)}</span>`).join("")}</div>` : "")
-      + `<div class="actions"><button class="copy">Copier</button></div>`;
+      + (t.alternatives.length ? `<div class="alts">Alternatives: ${t.alternatives.map((a) => `<span>${esc(a)}</span>`).join("")}</div>` : "")
+      + `<div class="actions"><button class="copy">Copy</button></div>`;
     body.querySelector(".copy").onclick = (e) => {
-      navigator.clipboard.writeText(t.translation).then(() => { e.target.textContent = "Copié ✓"; });
+      navigator.clipboard.writeText(t.translation).then(() => { e.target.textContent = "Copied ✓"; });
     };
     place(pop, rect, pop.offsetWidth, pop.offsetHeight);
   }
@@ -141,7 +141,7 @@
     if (ctx && rect) run(ctx, rect);
   }
 
-  icon.addEventListener("mousedown", (e) => e.preventDefault()); // conserve la sélection
+  icon.addEventListener("mousedown", (e) => e.preventDefault()); // keep the selection
   icon.addEventListener("click", (e) => { e.stopPropagation(); if (lastCtx && lastRect) run(lastCtx, lastRect); });
   shadow.querySelector(".close").addEventListener("click", hidePop);
 

@@ -1,9 +1,9 @@
-// Construction du prompt et analyse de la réponse de Claude.
+// Prompt building and model response parsing.
 (function (root) {
   const LANG_NAMES = {
-    fr: "français", en: "English", es: "español", de: "Deutsch", it: "italiano", pt: "português",
-    nl: "Nederlands", ru: "русский", ar: "العربية", he: "עברית", zh: "中文", ja: "日本語", ko: "한국어",
-    pl: "polski", tr: "Türkçe", uk: "українська",
+    fr: "French", en: "English", es: "Spanish", de: "German", it: "Italian", pt: "Portuguese",
+    nl: "Dutch", ru: "Russian", ar: "Arabic", he: "Hebrew", zh: "Chinese", ja: "Japanese", ko: "Korean",
+    pl: "Polish", tr: "Turkish", uk: "Ukrainian",
   };
 
   function langName(code) {
@@ -43,7 +43,7 @@ Reply with ONLY a JSON object, no markdown fences:
             note: typeof o.note === "string" ? o.note : "",
           };
         }
-      } catch (_) { /* repli */ }
+      } catch (_) { /* fall back */ }
     }
     return { translation: t, sourceLang: "", alternatives: [], note: "" };
   }

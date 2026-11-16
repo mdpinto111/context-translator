@@ -1,5 +1,5 @@
-// Extraction du contexte autour d'une sélection.
-// Les fonctions "pures" (sur chaînes) sont exportées pour les tests Node.
+// Extracts the context around a selection.
+// Pure (string-based) functions are exported for Node tests.
 (function (root) {
   const MAX_CONTEXT = 2000;
   const BLOCK_SELECTOR = "p, li, td, th, dd, dt, blockquote, figcaption, h1, h2, h3, h4, h5, h6, article, section, div";
@@ -9,7 +9,7 @@
       try {
         const seg = new Intl.Segmenter(lang || undefined, { granularity: "sentence" });
         return Array.from(seg.segment(text), (s) => ({ text: s.segment, start: s.index }));
-      } catch (_) { /* repli ci-dessous */ }
+      } catch (_) { /* fall back below */ }
     }
     const out = [];
     const re = /[^.!?。！？]+[.!?。！？]*\s*/g;
@@ -19,13 +19,13 @@
   }
 
   /**
-   * À partir du texte d'un bloc et de la position de la sélection dans ce bloc,
-   * renvoie un extrait (N phrases avant/après) où la sélection est balisée.
+   * Given a block's text and the selection's position within it, returns an
+   * excerpt (N sentences before/after) with the selection wrapped in tags.
    */
   function buildContextSnippet(blockText, selStart, selEnd, opts = {}) {
     const n = opts.sentences ?? 2;
     const max = opts.maxChars ?? MAX_CONTEXT;
-    // Ignore les espaces en bordure (le double-clic sélectionne l'espace suivant)
+    // Ignore surrounding whitespace (double-click also selects the trailing space)
     while (selStart < selEnd && /\s/.test(blockText[selStart])) selStart++;
     while (selEnd > selStart && /\s/.test(blockText[selEnd - 1])) selEnd--;
     const sentences = splitSentences(blockText, opts.lang);
@@ -39,14 +39,14 @@
     let to = Math.min(sentences.length - 1, last + n);
     const startPos = () => sentences[from].start;
     const endPos = () => sentences[to].start + sentences[to].text.length;
-    // Réduction symétrique si trop long
+    // Shrink symmetrically if too long
     while (endPos() - startPos() > max && (from < first || to > last)) {
       if (first - from >= to - last && from < first) from++;
       else if (to > last) to--;
       else from++;
     }
     let a = startPos(), b = endPos();
-    if (b - a > max) { // la sélection elle-même est énorme
+    if (b - a > max) { // the selection itself is huge
       a = Math.max(0, selStart - max / 4);
       b = Math.min(blockText.length, selEnd + max / 4);
     }
@@ -56,7 +56,7 @@
     return (before + "<selection>" + sel + "</selection>" + after).replace(/\s+/g, " ").trim();
   }
 
-  // ---- Partie DOM (navigateur uniquement) ----
+  // ---- DOM part (browser only) ----
   function findBlock(node) {
     let el = node.nodeType === 1 ? node : node.parentElement;
     while (el && el !== document.body) {
@@ -86,7 +86,7 @@
     const pageLang = document.documentElement.lang || "";
     const base = { pageTitle: document.title || "", pageLang, heading: "", url: location.hostname };
 
-    // Champs de saisie
+    // Text inputs
     if (active && (active.tagName === "TEXTAREA" || (active.tagName === "INPUT" && /text|search|url|email/.test(active.type)))) {
       const { selectionStart: s, selectionEnd: e, value } = active;
       if (s == null || s === e) return null;
@@ -100,11 +100,11 @@
     const range = sel.getRangeAt(0);
     const block = findBlock(range.commonAncestorContainer);
 
-    // Position de la sélection dans le texte du bloc
+    // Position of the selection within the block's text
     const pre = document.createRange();
     pre.selectNodeContents(block);
     pre.setEnd(range.startContainer, range.startOffset);
-    // textContent et Range.toString partagent le même modèle de texte brut
+    // textContent and Range.toString share the same raw-text model
     const fullText = block.textContent;
     const raw = range.toString();
     let start = pre.toString().length;

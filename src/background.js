@@ -1,4 +1,4 @@
-// Service worker (Chrome) / page d'arrière-plan (Firefox).
+// Service worker (Chrome) / background page (Firefox).
 if (typeof CtxPrompt === "undefined" && typeof importScripts === "function") importScripts("prompt.js", "providers.js");
 
 const DEFAULTS = {
@@ -25,7 +25,7 @@ function activeConfig(s) {
 
 chrome.runtime.onInstalled.addListener((details) => {
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: "ctx-translate", title: "Traduire « %s » avec le contexte", contexts: ["selection", "editable"] });
+    chrome.contextMenus.create({ id: "ctx-translate", title: "Translate \"%s\" with context", contexts: ["selection", "editable"] });
   });
   if (details.reason === "install") chrome.runtime.openOptionsPage();
 });
@@ -50,9 +50,9 @@ async function translate(ctx, overrideLang) {
   const key = JSON.stringify([ctx.selection, ctx.context, target, cfg.provider, cfg.model]);
   if (cache.has(key)) return cache.get(key);
   const { text, model, persist } = await CtxProviders.completeWithFallback(cfg, CtxPrompt.SYSTEM_PROMPT, CtxPrompt.buildUserMessage(ctx, target));
-  if (persist) await saveModel(s, model); // le modèle configuré n'existe plus
+  if (persist) await saveModel(s, model); // the configured model no longer exists
   let result = { ...CtxPrompt.parseResponse(text), targetLang: target, model };
-  // Texte déjà dans la langue cible : traduire vers une langue secondaire
+  // Text already in the target language: translate into the secondary language
   const base = (l) => (l || "").toLowerCase().split(/[-_]/)[0];
   if (!overrideLang && base(result.sourceLang) === base(target)) {
     const alt = base(s.secondaryLang) && base(s.secondaryLang) !== base(target) ? s.secondaryLang : (base(target) === "en" ? "fr" : "en");
