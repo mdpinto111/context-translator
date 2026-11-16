@@ -119,7 +119,12 @@ $("test").addEventListener("click", async () => {
   setStatus(st, "Test en cours…", true);
   try {
     await ensureHostPermission(cfg.baseUrl || PROVIDERS[cfg.provider].defaultBaseUrl);
-    const r = await chrome.runtime.sendMessage({ type: "test-provider", cfg });
+    const r = await Promise.race([
+      chrome.runtime.sendMessage({ type: "test-provider", cfg }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error(
+        "Aucune réponse du script d'arrière-plan. Ouvrez chrome://extensions → « service worker » de l'extension et regardez la console.")), 100000)),
+    ]);
+    if (!r) throw new Error("Le script d'arrière-plan n'a pas répondu (rechargez l'extension).");
     if (r.ok) {
       const changed = r.model && r.model !== cfg.model;
       if (changed) $("model").value = r.model;

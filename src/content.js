@@ -90,8 +90,12 @@
     pop.style.display = "block";
     place(pop, rect, pop.offsetWidth, pop.offsetHeight);
     let r;
-    try { r = await chrome.runtime.sendMessage({ type: "translate", ctx }); }
-    catch (e) { r = { ok: false, error: "L'extension a été rechargée : actualisez la page." }; }
+    try {
+      r = await Promise.race([
+        chrome.runtime.sendMessage({ type: "translate", ctx }),
+        new Promise((res) => setTimeout(() => res({ ok: false, error: "Pas de réponse de l'extension après 100 s." }), 100000)),
+      ]);
+    } catch (e) { r = { ok: false, error: "L'extension a été rechargée : actualisez la page." }; }
     if (id !== reqId) return; // popup fermée ou nouvelle requête entre-temps
     if (!r || !r.ok) {
       meta.textContent = "Erreur";

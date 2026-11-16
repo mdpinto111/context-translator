@@ -46,13 +46,24 @@
     529: "Le service est surchargé, réessayez dans un instant.",
   };
 
-  async function post(url, headers, body) {
-    let res;
+  const TIMEOUT_MS = 45000;
+
+  async function fetchWithTimeout(url, init = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-      res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+      return await fetch(url, { ...init, signal: ctrl.signal });
     } catch (e) {
-      throw new Error(`Impossible de joindre ${new URL(url).host} (serveur arrêté ou permission manquante).`);
+      const host = new URL(url).host;
+      if (e.name === "AbortError") throw new Error(`Pas de réponse de ${host} après ${TIMEOUT_MS / 1000} s.`);
+      throw new Error(`Impossible de joindre ${host} (réseau, serveur arrêté ou permission manquante).`);
+    } finally {
+      clearTimeout(timer);
     }
+  }
+
+  async function post(url, headers, body) {
+    const res = await fetchWithTimeout(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
     if (!res.ok) {
       let detail = "";
       try { const j = await res.json(); detail = j.error?.message || j.error || ""; } catch (_) {}
@@ -112,9 +123,7 @@
   /** Liste les modèles Gemini utilisables pour generateContent avec la clé fournie. */
   async function listGeminiModels(cfg) {
     const base = trim(cfg.baseUrl || PROVIDERS.gemini.defaultBaseUrl);
-    let res;
-    try { res = await fetch(`${base}/models?pageSize=1000`, { headers: { "x-goog-api-key": cfg.apiKey } }); }
-    catch (_) { throw new Error("Impossible de joindre l'API Gemini."); }
+    const res = await fetchWithTimeout(`${base}/models?pageSize=1000`, { headers: { "x-goog-api-key": cfg.apiKey } });
     if (!res.ok) throw new Error(res.status === 400 || res.status === 403 ? "Clé API Gemini invalide." : `Erreur API (${res.status})`);
     const data = await res.json();
     return (data.models || [])
